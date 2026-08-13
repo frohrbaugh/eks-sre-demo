@@ -22,15 +22,24 @@ terraform_modules:
   eks: "~> 21.0" # terraform-aws-modules/eks/aws
 
 helm_charts:
-  # Pin these to exact versions before the first install. Resolve with:
-  #   helm search repo <chart> --versions
-  aws-load-balancer-controller: "TBD" # repo: https://aws.github.io/eks-charts
-  kube-prometheus-stack: "TBD" # repo: https://prometheus-community.github.io/helm-charts
-  opentelemetry-collector: "TBD" # repo: https://open-telemetry.github.io/opentelemetry-helm-charts
-  tempo: "TBD" # optional
+  # Resolved 2026-08-13 with `helm search repo <chart> --versions`.
+  # Install with --version <exact>. Never omit the flag: the chart you get
+  # would then depend on when you happened to run helm repo update.
+  aws-load-balancer-controller:
+    chart: "3.5.0" # app v3.5.0  | https://aws.github.io/eks-charts
+  kube-prometheus-stack:
+    chart: "88.3.0" # operator v0.93.0 | https://prometheus-community.github.io/helm-charts
+  opentelemetry-collector:
+    chart: "0.169.0" # app 0.158.0 | https://open-telemetry.github.io/opentelemetry-helm-charts
+  tempo:
+    chart: "TBD" # optional, only if trace search in Grafana is wanted
 
 argocd:
-  version: "TBD" # pin the install manifest ref, never `stable`
+  # Pin the install manifest to a release tag, never the `stable` branch --
+  # `stable` moves, and a demo that worked yesterday can break with no commit
+  # of your own.
+  version: "v3.5.1"
+  install_manifest: "https://raw.githubusercontent.com/argoproj/argo-cd/v3.5.1/manifests/install.yaml"
 
 # --- Caveats -----------------------------------------------------------------
 #
