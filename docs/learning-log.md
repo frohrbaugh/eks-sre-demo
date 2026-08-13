@@ -11,6 +11,89 @@ Newest first.
 
 ---
 
+## 2026-08-13 — Helm 4 applies server-side, and that changes the migration
+
+**The open question I had:** whether Helm 4 would behave differently from the
+Helm 3 that every chart's documentation assumes. It does, and it showed up
+exactly where the ladder hands stage 1 to stage 2.
+
+Moving `kubectl apply` objects into a Helm release produced three failures in a
+row, each a different mechanism:
+
+1. **Missing CRDs.** The chart renders a `ServiceMonitor` and `PrometheusRule`;
+   their CRDs belong to kube-prometheus-stack, which was not installed. The
+   chart has an undeclared dependency on another chart's CRDs.
+2. **Helm's ownership guard.** `invalid ownership metadata; label
+   "app.kubernetes.io/managed-by" must equal "Helm": current value is
+   "kubectl"`. Correct behaviour, not a bug: silently absorbing pre-existing
+   objects would mean a later `helm uninstall` deletes things Helm never made.
+3. **A server-side apply field conflict** with `demo-cli`, the field manager
+   from my earlier SSA experiment.
+
+Number 3 is the Helm 4 part:
+
+```
+--server-side string   must be "true", "false" or "auto"  (default "auto")
+--force-conflicts      if set server-side apply will force changes against conflicts
+```
+
+Helm 3 applied client-side. Helm 4 applies **server-side by default**, so field
+ownership is now Helm's problem too, and "conflict with manager X" is a new
+class of Helm failure when migrating an existing cluster.
+
+**What I learned:** a major version bump in a packaging tool changed which
+*API mechanism* it uses. That is not a flag change, it is a behaviour change,
+and it only surfaced because I ran the migration on a real cluster with a real
+history of other managers. Nothing in `helm lint` or `helm template` would have
+predicted it.
+
+---
+
+## 2026-08-13 — EKS does not ship metrics-server, so my HPA was decorative
+
+**What I expected:** the HPA in the chart would work once pods were running.
+
+**What actually happened:** Argo CD reported the application `Degraded` while
+every resource showed `Synced` and the app served traffic fine through the ALB.
+No health message. The workload was 2/2.
+
+Chasing it to the HPA:
+
+```
+$ kubectl -n demo get hpa
+TARGETS: cpu: <unknown>/70%
+
+$ kubectl -n demo describe hpa demo-api
+ScalingActive=False  FailedGetResourceMetric
+  failed to get cpu utilization: unable to fetch metrics from resource metrics API
+
+$ kubectl get apiservice v1beta1.metrics.k8s.io
+Error from server (NotFound)
+```
+
+**EKS does not install metrics-server.** Some distributions do; EKS does not.
+Without it the HPA object exists, is accepted, and does nothing. `kubectl top`
+returns nothing either.
+
+**What I got right by accident:** Argo CD was the thing that told me. I would
+probably not have noticed on my own - the app was up and serving. Argo assessed
+the HPA's health, saw a control loop that could not run, and refused to call the
+application Healthy. That is a genuinely better signal than "the pods are up".
+
+**Fix:** add the managed add-on in Terraform, after compute (it is a Deployment):
+
+```hcl
+addons = { metrics-server = {} }
+```
+
+**What I learned:** "declared" and "functional" are different states, and
+nothing about a green pod list distinguishes them. An HPA with no metrics
+source is indistinguishable from a working one until load arrives - which is
+exactly when you would rather not discover it.
+
+
+---
+
 ## 2026-08-13 — A real deadlock: nodes need the CNI, the CNI came after the nodes
 
 **What I expected:** `terraform apply` creates the cluster, then the node group,
@@ -309,8 +392,10 @@ edges actually are.
   and roughly what differs. I have not measured or operated any of them.
 - **Admission webhooks.** I can explain where they sit in the request path. I
   have never written one.
-- **Argo CD's embedded Helm version** and whether Helm 4 rendering differs. Open
-  question from today.
+- **Argo CD's embedded Helm version.** Partly answered: Argo CD renders the
+  chart itself rather than shelling out to my local Helm, and the rendered
+  output matched. But I have not confirmed which Helm version Argo embeds, so I
+  cannot say the two would always agree.
 - **Node autoscaling.** Karpenter and Cluster Autoscaler are not installed here.
   I can explain how HPA (pod count) differs from node capacity, but I have not
   operated either autoscaler.
