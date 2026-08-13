@@ -55,6 +55,38 @@ jobs:
         working-directory: app
         run: pytest
 
+      - name: Build the image
+        # This runs on pull requests on purpose.
+        #
+        # The publish job below is skipped for PRs, so without this step a
+        # change to the Dockerfile or requirements.lock would report green
+        # having never been built. Dependabot's python base-image bump did
+        # exactly that. Building here costs ~30s and closes the gap.
+        run: docker build --build-arg GIT_SHA="${{ github.sha }}" -t sre-demo-api:ci app
+
+      - name: Smoke test the image
+        # Under the same constraints Kubernetes will impose: read-only root
+        # filesystem, writable /tmp only. Catches a CrashLoopBackOff here, for
+        # free, instead of on a cluster at ~$0.34/hr.
+        run: |
+          docker run -d --name ci-smoke \
+            --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            -p 8080:8080 sre-demo-api:ci
+          for i in $(seq 1 15); do
+            curl -fsS http://localhost:8080/health/ready >/dev/null 2>&1 && break
+            sleep 1
+          done
+          set -e
+          curl -fsS http://localhost:8080/health/ready
+          curl -fsS http://localhost:8080/api/v1/work
+          # Must degrade, not crash, with no AWS configured.
+          curl -fsS http://localhost:8080/api/v1/config | grep -q '"disabled"'
+          # The SLO in docs/slo.md is unmeasurable without this bucket edge.
+          curl -fsS http://localhost:8080/metrics | grep -q 'le="0.3"'
+          # Runs as the UID the securityContext asserts.
+          test "$(docker exec ci-smoke id -u)" = "10001"
+          docker rm -f ci-smoke
+
       - name: Validate manifests (stage 1)
         run: |
           # kubectl kustomize renders and parses offline. Note that
