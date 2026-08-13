@@ -3,7 +3,7 @@
 # Single-stage: the runtime needs no compiler, so a builder stage would add
 # complexity without removing anything from the final image.
 
-FROM python:3.12-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 ARG GIT_SHA=dev
 
