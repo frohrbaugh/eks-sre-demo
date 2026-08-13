@@ -30,7 +30,7 @@ jobs:
     name: test and validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
         with:
@@ -116,7 +116,7 @@ jobs:
     name: secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: gitleaks
@@ -146,7 +146,7 @@ jobs:
     outputs:
       image_tag: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Assume the ECR publisher role via OIDC
         uses: aws-actions/configure-aws-credentials@v5
@@ -185,7 +185,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Point the demo environment at the new SHA
         env:
