@@ -62,7 +62,7 @@ jobs:
         # change to the Dockerfile or requirements.lock would report green
         # having never been built. Dependabot's python base-image bump did
         # exactly that. Building here costs ~30s and closes the gap.
-        run: docker build --build-arg GIT_SHA="${{ github.sha }}" -t sre-demo-api:ci app
+        run: docker build --provenance=false --sbom=false --build-arg GIT_SHA="${{ github.sha }}" -t sre-demo-api:ci app
 
       - name: Smoke test the image
         # Under the same constraints Kubernetes will impose: read-only root
@@ -178,7 +178,12 @@ jobs:
           REPOSITORY: ${{ vars.ECR_REPOSITORY_NAME }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          # --provenance/--sbom off: buildx would otherwise push extra UNTAGGED
+          # attestation manifests alongside the tagged image, and the ECR
+          # lifecycle policy expires untagged images after 1 day. One tag,
+          # one manifest, one digest.
           docker build \
+            --provenance=false --sbom=false \
             --build-arg GIT_SHA="$IMAGE_TAG" \
             -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" \
             app

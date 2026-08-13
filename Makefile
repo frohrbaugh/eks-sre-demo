@@ -53,7 +53,7 @@ lock: ## FREE  Regenerate the hash-pinned lock file (inside python:3.14)
 
 .PHONY: build
 build: ## FREE  Build the container image
-	docker build --build-arg GIT_SHA=$(IMAGE_TAG) -t $(IMAGE_NAME):$(IMAGE_TAG) $(APP_DIR)
+	docker build --provenance=false --sbom=false --build-arg GIT_SHA=$(IMAGE_TAG) -t $(IMAGE_NAME):$(IMAGE_TAG) $(APP_DIR)
 
 .PHONY: smoke
 smoke: build ## FREE  Run the image locally and hit every endpoint
