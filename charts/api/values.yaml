@@ -1,0 +1,116 @@
+# Default values. Environment-specific overrides live in
+# gitops/environments/demo/values.yaml, which CI updates with the image tag.
+#
+# Placeholders are intentional: this file is committed to a public repository,
+# so no account ID, bucket name, or region appears here.
+
+replicaCount: 2
+
+image:
+  # <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/sre-demo-api
+  repository: PLACEHOLDER_ECR_REPOSITORY
+  # Always an immutable commit SHA. Never "latest" -- rollback and evidence
+  # both become ambiguous the moment a tag can move.
+  tag: PLACEHOLDER_IMAGE_TAG
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: "demo-api"
+
+serviceAccount:
+  create: true
+  name: demo-api
+  # Left empty for EKS Pod Identity: the IAM binding lives in AWS, not here.
+  # For IRSA instead, set eks.amazonaws.com/role-arn.
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: http
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /health/ready
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/success-codes: "200"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/tags: Project=eks-sre-demo,Environment=demo
+  hosts: []
+  path: /
+  pathType: Prefix
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    # Memory limit only. A CPU limit throttles instead of failing, which shows
+    # up as unexplained latency; the request is what the scheduler honours.
+    memory: 256Mi
+
+probes:
+  startup:
+    path: /health/live
+    periodSeconds: 2
+    failureThreshold: 30
+  liveness:
+    path: /health/live
+    periodSeconds: 10
+    failureThreshold: 3
+  readiness:
+    path: /health/ready
+    periodSeconds: 5
+    failureThreshold: 3
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+topologySpread:
+  enabled: true
+  # ScheduleAnyway, not DoNotSchedule: spreading is preferred, not required.
+  # DoNotSchedule on a two-node cluster makes pods unschedulable.
+  whenUnsatisfiable: ScheduleAnyway
+
+observability:
+  serviceMonitor:
+    enabled: true
+    interval: 15s
+    scrapeTimeout: 5s
+    # Must match the kube-prometheus-stack release name or Prometheus will
+    # never select this monitor.
+    releaseLabel: monitoring
+  prometheusRule:
+    enabled: true
+    # Burn-rate alerting against a 99.5% availability SLO.
+    slo:
+      availabilityTarget: 0.995
+      # Minimum request rate before alerting, so one failure at near-zero
+      # traffic does not page anyone.
+      minRequestsPerSecond: 0.1
+
+terminationGracePeriodSeconds: 30
+
+env:
+  AWS_REGION: PLACEHOLDER_AWS_REGION
+  DEMO_BUCKET: PLACEHOLDER_DEMO_BUCKET
+  DEMO_OBJECT_KEY: config/demo.json
+  # Demo-only failure injection. Off by default.
+  FAILURE_RATE: "0.0"
+  LATENCY_MS: "0"
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

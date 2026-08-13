@@ -1,0 +1,16 @@
+{{- if .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "api.fullname" . }}
+  labels:
+    {{- include "api.labels" . | nindent 4 }}
+spec:
+  # A PDB constrains VOLUNTARY disruptions only -- node drains, cluster
+  # upgrades, descheduling. It does not reserve capacity and it does not
+  # protect against a node failing outright. Worth being precise about.
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "api.selectorLabels" . | nindent 6 }}
+{{- end }}

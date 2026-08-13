@@ -1,0 +1,168 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths-ignore:
+      # Prevents the promote job's own commit from re-triggering this workflow.
+      - "gitops/environments/demo/values.yaml"
+      - "docs/**"
+      - "runbooks/**"
+      - "**/*.md"
+
+# Least privilege by default. Jobs opt in to more, individually.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Runs on every PR, including from forks. Needs no secrets and no cloud access.
+  # ---------------------------------------------------------------------------
+  test:
+    name: test and validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: app/requirements.lock
+
+      - name: Install locked dependencies
+        working-directory: app
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --require-hashes -r requirements.lock
+          python -m pip install pytest httpx ruff
+
+      - name: Lint and format
+        working-directory: app
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Unit tests
+        working-directory: app
+        run: pytest
+
+      - name: Validate manifests (stage 1)
+        run: |
+          # kubectl kustomize renders and parses offline. Note that
+          # `kubectl apply --dry-run=client` would NOT work here: it fetches
+          # the OpenAPI schema from an API server, and CI has no cluster.
+          kubectl kustomize k8s/overlays/eks > /tmp/stage1.yaml
+          test -s /tmp/stage1.yaml
+
+      - name: Validate chart (stage 2)
+        run: |
+          helm lint charts/api
+          helm template demo-api charts/api \
+            -f gitops/environments/demo/values.yaml > /tmp/stage2.yaml
+          test -s /tmp/stage2.yaml
+
+      - name: Schema-validate both stages
+        run: |
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz" \
+            | tar xz kubeconform
+          # Argo CD and Prometheus Operator CRDs are not in the default schema
+          # set, so allow them through by name rather than skipping validation.
+          ./kubeconform -strict -summary \
+            -ignore-missing-schemas \
+            /tmp/stage1.yaml /tmp/stage2.yaml
+
+  secret-scan:
+    name: secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------------------------------------------------------------------------
+  # Publish. Unreachable from a fork.
+  #
+  # The `github.repository` check is the important one: anyone can fork a public
+  # repository and open a pull request, and this job is the only thing in the
+  # workflow that can obtain AWS credentials.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: build and push to ECR
+    needs: [test, secret-scan]
+    if: >-
+      github.repository == 'frohrbaugh/eks-sre-demo' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Granted on this job only, never repository-wide.
+      id-token: write
+    outputs:
+      image_tag: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assume the ECR publisher role via OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          # No access keys exist. GitHub presents a signed token; STS returns
+          # short-lived credentials, but only for this repo on this ref.
+          role-to-assume: ${{ vars.AWS_GITHUB_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push immutable image
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY_NAME }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --build-arg GIT_SHA="$IMAGE_TAG" \
+            -t "$REGISTRY/$REPOSITORY:$IMAGE_TAG" \
+            app
+          docker push "$REGISTRY/$REPOSITORY:$IMAGE_TAG"
+          echo "Pushed $REGISTRY/$REPOSITORY:$IMAGE_TAG"
+
+  # ---------------------------------------------------------------------------
+  # Promotion is a separate job so that `contents: write` is never held by the
+  # job that builds and runs third-party code.
+  #
+  # This does not deploy. It changes one line in Git; Argo CD does the rest.
+  # ---------------------------------------------------------------------------
+  promote:
+    name: promote to demo
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Point the demo environment at the new SHA
+        env:
+          IMAGE_TAG: ${{ needs.publish.outputs.image_tag }}
+        run: |
+          sed -i "s|^  tag: .*|  tag: ${IMAGE_TAG}|" gitops/environments/demo/values.yaml
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gitops/environments/demo/values.yaml
+          git diff --staged --quiet && echo "no change" && exit 0
+          git commit -m "promote: demo -> ${IMAGE_TAG}"
+          git push

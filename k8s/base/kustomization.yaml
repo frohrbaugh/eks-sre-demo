@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: demo
+
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - deployment.yaml
+  - service.yaml
+
+# includeSelectors is deliberately omitted (defaults to false).
+#
+# If these labels were injected into spec.selector, adding or renaming one
+# later would attempt to mutate an immutable field and the apply would fail
+# with "field is immutable". Identifying labels belong in the manifests;
+# descriptive labels belong here.
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: eks-sre-demo
+      app.kubernetes.io/component: api

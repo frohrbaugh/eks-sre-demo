@@ -1,0 +1,28 @@
+# Environment overrides for the demo environment.
+#
+# CI writes image.tag here and nowhere else. That single line is the deployment
+# trigger: Argo CD notices the commit and reconciles the cluster to match.
+#
+# Placeholders stay placeholders in Git. Real account-specific values are
+# injected at bootstrap from `terraform output` -- see the Makefile target
+# `gitops-values`. Nothing here should ever contain an account ID.
+
+image:
+  repository: PLACEHOLDER_ECR_REPOSITORY
+  # Always a full git commit SHA. Never a branch name, never "latest".
+  tag: PLACEHOLDER_IMAGE_TAG
+
+env:
+  AWS_REGION: PLACEHOLDER_AWS_REGION
+  DEMO_BUCKET: PLACEHOLDER_DEMO_BUCKET
+  DEMO_OBJECT_KEY: config/demo.json
+  FAILURE_RATE: "0.0"
+  LATENCY_MS: "0"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+
+ingress:
+  enabled: true

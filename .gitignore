@@ -1,0 +1,46 @@
+# --- Terraform ---
+# State can contain secrets in plaintext. Never commit it.
+.terraform/
+.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Real variable values. terraform.tfvars holds public_access_cidrs, which is a
+# home IP address - publishing it says where the operator lives.
+*.tfvars
+!*.tfvars.example
+
+# Partial backend config: holds the state bucket name.
+backend.hcl
+
+# --- Local environment ---
+.env
+.envrc
+kubeconfig*
+*.local.yaml
+*.local.yml
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+build/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Scratch ---
+/tmp/
+*.tmp
+rendered.yaml

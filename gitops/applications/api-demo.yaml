@@ -1,0 +1,64 @@
+# Stage 3 of the delivery ladder.
+#
+# Stage 1 applied once. This applies forever: the application controller keeps
+# comparing the cluster to Git and correcting the difference.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-api
+  namespace: argocd
+  finalizers:
+    # Ensures a `kubectl delete application` also removes the managed
+    # resources, rather than orphaning them in the cluster.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  # Multi-source form.
+  #
+  # The obvious single-source spelling -- path: charts/api with
+  # valueFiles: ../../gitops/... -- points outside the chart directory and is
+  # fragile. The `$values` ref is the supported way to combine a chart in one
+  # path with a values file in another.
+  #
+  # Note there are no repository credentials anywhere: the repository is
+  # public, so Argo CD can read it anonymously.
+  sources:
+    - repoURL: https://github.com/frohrbaugh/eks-sre-demo.git
+      targetRevision: main
+      path: charts/api
+      helm:
+        valueFiles:
+          - $values/gitops/environments/demo/values.yaml
+    - repoURL: https://github.com/frohrbaugh/eks-sre-demo.git
+      targetRevision: main
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo
+
+  syncPolicy:
+    automated:
+      # Delete resources removed from Git.
+      prune: true
+      # Repair manual drift. This is what makes the `kubectl scale` demo work.
+      selfHeal: true
+      # Refuse to sync an empty manifest set -- guards against a bad render
+      # silently deleting the whole application.
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PrunePropagationPolicy=foreground
+      # Makes field ownership explicit rather than implicit. With the HPA also
+      # in play, server-side apply is what keeps "who owns spec.replicas" a
+      # question with an answer. See docs/kubectl-apply-deep-dive.md.
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  revisionHistoryLimit: 5

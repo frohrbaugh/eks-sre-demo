@@ -1,0 +1,11 @@
+# Direct dependencies only. Compile to a fully hash-pinned lock file with:
+#
+#   pip-compile --generate-hashes --output-file requirements.lock requirements.in
+#
+# The Dockerfile installs with --require-hashes, so every transitive dependency
+# is pinned by digest. Regenerate the lock whenever this file changes.
+
+fastapi
+uvicorn[standard]
+prometheus-client
+boto3

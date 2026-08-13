@@ -1,0 +1,24 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is GITIGNORED and must
+# stay that way: public_access_cidrs is your home IP address.
+#
+#   cp terraform.tfvars.example terraform.tfvars
+
+aws_region = "us-east-2"
+
+cluster_name = "sre-demo"
+
+# Verify this is currently supported in your region before applying:
+#   aws eks describe-cluster-versions --region us-east-2
+kubernetes_version = "1.34"
+
+# Your public IP only. Find it with:  curl -s https://checkip.amazonaws.com
+# 0.0.0.0/0 is rejected by a validation rule in variables.tf.
+public_access_cidrs = ["203.0.113.10/32"]
+
+github_repository = "frohrbaugh/eks-sre-demo"
+github_ref        = "refs/heads/main"
+
+# Tag only - nothing deletes on this date. Set a calendar reminder too.
+delete_after = "2026-09-30"
+
+owner = "frohrbaugh"

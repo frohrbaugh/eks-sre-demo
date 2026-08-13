@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: demo-api
+  ports:
+    - name: http
+      port: 80
+      # Named target port, not the number 8080. If the container port is ever
+      # renumbered, this follows it. A hardcoded mismatch here produces the
+      # classic failure: healthy pods, populated endpoints, zero traffic.
+      targetPort: http
+      protocol: TCP

@@ -1,0 +1,120 @@
+{{- if .Values.observability.prometheusRule.enabled }}
+{{- $slo := .Values.observability.prometheusRule.slo }}
+{{- $budget := subf 1.0 $slo.availabilityTarget }}
+{{- $route := "/api/v1/work" }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "api.fullname" . }}
+  labels:
+    {{- include "api.labels" . | nindent 4 }}
+    release: {{ .Values.observability.serviceMonitor.releaseLabel }}
+spec:
+  groups:
+    - name: demo-api.slo
+      rules:
+        # Multi-window, multi-burn-rate alerting.
+        #
+        #   burn rate = observed error ratio / error budget ({{ printf "%.4f" $budget }})
+        #
+        # Each alert requires BOTH a short window (fast to fire) and a longer
+        # confirming window (kills one-off spikes), plus a minimum request rate
+        # so a single failure at near-zero traffic does not page anyone.
+        #
+        # The SLI deliberately measures only {{ $route }}: health and metrics
+        # endpoints are not user journeys and must not pad the numbers.
+
+        - alert: DemoApiErrorBudgetBurnFast
+          expr: |
+            (
+              sum(rate(http_requests_total{route="{{ $route }}",status=~"5.."}[5m]))
+              /
+              sum(rate(http_requests_total{route="{{ $route }}"}[5m]))
+            ) > {{ printf "%.5f" (mulf 14.4 $budget) }}
+            and
+            (
+              sum(rate(http_requests_total{route="{{ $route }}",status=~"5.."}[1h]))
+              /
+              sum(rate(http_requests_total{route="{{ $route }}"}[1h]))
+            ) > {{ printf "%.5f" (mulf 14.4 $budget) }}
+            and
+            sum(rate(http_requests_total{route="{{ $route }}"}[5m])) > {{ $slo.minRequestsPerSecond }}
+          for: 2m
+          labels:
+            severity: critical
+            service: sre-demo-api
+            environment: demo
+            slo: availability
+          annotations:
+            summary: "Fast error-budget burn on {{ $route }} (14.4x)"
+            description: >-
+              Availability SLO is {{ $slo.availabilityTarget }}. At this rate the
+              30-day error budget is consumed in about 2 days.
+              Observed 5m error ratio: {{ "{{ $value | humanizePercentage }}" }}.
+            runbook_url: https://github.com/frohrbaugh/eks-sre-demo/blob/main/runbooks/high-5xx.md
+            dashboard_url: https://github.com/frohrbaugh/eks-sre-demo/blob/main/docs/slo.md
+
+        - alert: DemoApiErrorBudgetBurnSlow
+          expr: |
+            (
+              sum(rate(http_requests_total{route="{{ $route }}",status=~"5.."}[30m]))
+              /
+              sum(rate(http_requests_total{route="{{ $route }}"}[30m]))
+            ) > {{ printf "%.5f" (mulf 6.0 $budget) }}
+            and
+            (
+              sum(rate(http_requests_total{route="{{ $route }}",status=~"5.."}[6h]))
+              /
+              sum(rate(http_requests_total{route="{{ $route }}"}[6h]))
+            ) > {{ printf "%.5f" (mulf 6.0 $budget) }}
+            and
+            sum(rate(http_requests_total{route="{{ $route }}"}[30m])) > {{ $slo.minRequestsPerSecond }}
+          for: 15m
+          labels:
+            severity: warning
+            service: sre-demo-api
+            environment: demo
+            slo: availability
+          annotations:
+            summary: "Sustained error-budget burn on {{ $route }} (6x)"
+            description: >-
+              Ticket-level burn. Observed 30m error ratio:
+              {{ "{{ $value | humanizePercentage }}" }}.
+            runbook_url: https://github.com/frohrbaugh/eks-sre-demo/blob/main/runbooks/high-5xx.md
+
+        - alert: DemoApiLatencySLOViolated
+          # The latency SLO is "95% of requests under 300 ms". This reads the
+          # le="0.3" bucket directly -- which only exists because the histogram
+          # in app/app/main.py defines that boundary on purpose.
+          expr: |
+            (
+              sum(rate(http_request_duration_seconds_bucket{route="{{ $route }}",le="0.3"}[5m]))
+              /
+              sum(rate(http_request_duration_seconds_count{route="{{ $route }}"}[5m]))
+            ) < 0.95
+            and
+            sum(rate(http_request_duration_seconds_count{route="{{ $route }}"}[5m])) > {{ $slo.minRequestsPerSecond }}
+          for: 10m
+          labels:
+            severity: warning
+            service: sre-demo-api
+            environment: demo
+            slo: latency
+          annotations:
+            summary: "Under 95% of {{ $route }} requests completing within 300 ms"
+            runbook_url: https://github.com/frohrbaugh/eks-sre-demo/blob/main/runbooks/latency.md
+
+        - alert: DemoApiTargetDown
+          # If Prometheus cannot scrape the app, every SLI above goes blind
+          # rather than red. Absence of data is not evidence of health.
+          expr: up{job=~".*demo-api.*"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            service: sre-demo-api
+            environment: demo
+          annotations:
+            summary: "Prometheus cannot scrape sre-demo-api"
+            description: "SLO alerting is blind while this fires."
+            runbook_url: https://github.com/frohrbaugh/eks-sre-demo/blob/main/runbooks/telemetry-missing.md
+{{- end }}

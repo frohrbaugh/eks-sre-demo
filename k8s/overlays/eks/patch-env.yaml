@@ -1,0 +1,32 @@
+# AWS-specific environment.
+#
+# There are no credentials here. AWS_REGION and DEMO_BUCKET only tell the SDK
+# what to ask for; the *permission* to read it arrives at runtime as short-lived
+# credentials from the EKS Pod Identity agent, via the default credential chain.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-api
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          env:
+            # Must equal the image tag. The Makefile substitutes both from the
+            # same variable so the running pod can report exactly which commit
+            # it is -- and so this stage matches what the Helm chart produces.
+            - name: APP_VERSION
+              value: PLACEHOLDER_IMAGE_TAG
+            - name: AWS_REGION
+              value: PLACEHOLDER_AWS_REGION
+            - name: DEMO_BUCKET
+              value: PLACEHOLDER_DEMO_BUCKET
+            - name: DEMO_OBJECT_KEY
+              value: config/demo.json
+            # Failure injection: off. Turned on only during the reliability
+            # exercises in docs/plan.md section 21.
+            - name: FAILURE_RATE
+              value: "0.0"
+            - name: LATENCY_MS
+              value: "0"

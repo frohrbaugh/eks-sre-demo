@@ -1,0 +1,24 @@
+version: 2
+updates:
+  # Actions are referenced by tag in ci.yaml. Dependabot keeps them current;
+  # pinning to full commit SHAs is the stronger supply-chain posture and is
+  # tracked as a follow-up in docs/learning-log.md.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: pip
+    directory: "/app"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: "/app"
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: terraform
+    directory: "/infra/environments/demo"
+    schedule:
+      interval: weekly

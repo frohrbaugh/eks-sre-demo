@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: demo
+
+resources:
+  - ../../base
+  - ingress.yaml
+
+# Everything below is what makes this an *AWS* deployment rather than just a
+# Kubernetes one. Everything in ../../base would run on any conformant cluster.
+
+patches:
+  - path: patch-env.yaml
+
+# Replace the placeholder image with the ECR repository and the immutable
+# commit SHA. Real values are substituted at apply time -- see the Makefile.
+# The committed file keeps placeholders so no account ID lands in a public repo.
+images:
+  - name: sre-demo-api
+    newName: PLACEHOLDER_ECR_REPOSITORY
+    newTag: PLACEHOLDER_IMAGE_TAG
+
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kubectl

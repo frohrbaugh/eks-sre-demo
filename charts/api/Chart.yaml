@@ -1,0 +1,18 @@
+apiVersion: v2
+name: api
+description: Demo API for the EKS SRE portfolio project
+type: application
+
+# version   - the chart's own version, bumped when templates change
+# appVersion - the default application version; overridden per-environment by
+#              the immutable commit SHA in gitops/environments/demo/values.yaml
+version: 0.1.0
+appVersion: "0.1.0"
+
+maintainers:
+  - name: frohrbaugh
+
+annotations:
+  # Stage 2 of the delivery ladder. Stage 1 is k8s/, stage 3 is gitops/.
+  # See docs/plan.md section 7.
+  eks-sre-demo/ladder-stage: "2"

@@ -1,0 +1,39 @@
+# This object is only desired state. The AWS Load Balancer Controller watches
+# it and reconciles a real ALB, listeners, rules, and target groups. Hand the
+# identical object to ingress-nginx and you would get an in-cluster proxy
+# instead -- which is why ingressClassName lives in this overlay and not in
+# k8s/base/.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: demo-api
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+
+    # target-type: ip registers pod IPs directly with the target group,
+    # bypassing the node port hop. Requires the VPC CNI, which EKS uses.
+    alb.ingress.kubernetes.io/target-type: ip
+
+    # The ALB health check is a SECOND, independent readiness signal alongside
+    # the kubelet probe. A pod can be Ready to Kubernetes and still unhealthy
+    # to the ALB if these disagree -- keep them pointed at the same path.
+    alb.ingress.kubernetes.io/healthcheck-path: /health/ready
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: "15"
+    alb.ingress.kubernetes.io/healthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/unhealthy-threshold-count: "2"
+    alb.ingress.kubernetes.io/success-codes: "200"
+
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/tags: Project=eks-sre-demo,Environment=demo
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: demo-api
+                port:
+                  number: 80

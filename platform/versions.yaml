@@ -1,0 +1,41 @@
+# Single source of truth for pinned versions.
+#
+# Nothing in this project installs "latest". A floating chart or action version
+# can break a demo that worked yesterday, and "it worked before" is not a
+# debuggable state.
+
+tools:
+  kubectl: "1.35.7" # apt stream v1.35, apt-mark hold applied
+  helm: "4.2.3" # NOTE: Helm 4. See caveat below.
+  terraform: "1.15.8" # >= 1.10 required for S3-native state locking
+  aws-cli: "2.35.21"
+  docker: "29.7.2"
+
+kubernetes:
+  # Must be a currently supported EKS version in the target region. Verify with:
+  #   aws eks describe-cluster-versions --region <region>
+  eks_version: "1.34"
+
+terraform_modules:
+  vpc: "~> 6.0" # terraform-aws-modules/vpc/aws
+  eks: "~> 21.0" # terraform-aws-modules/eks/aws
+
+helm_charts:
+  # Pin these to exact versions before the first install. Resolve with:
+  #   helm search repo <chart> --versions
+  aws-load-balancer-controller: "TBD" # repo: https://aws.github.io/eks-charts
+  kube-prometheus-stack: "TBD" # repo: https://prometheus-community.github.io/helm-charts
+  opentelemetry-collector: "TBD" # repo: https://open-telemetry.github.io/opentelemetry-helm-charts
+  tempo: "TBD" # optional
+
+argocd:
+  version: "TBD" # pin the install manifest ref, never `stable`
+
+# --- Caveats -----------------------------------------------------------------
+#
+# Helm 4: the local CLI is v4, but most published chart documentation assumes
+# Helm 3, and Argo CD renders charts with its OWN embedded Helm binary rather
+# than this one. If a chart renders locally but Argo CD disagrees, install
+# Helm 3 alongside as `helm3` and diff `helm template` output between the two
+# before debugging anything else. Record which version each chart was validated
+# against as the TBDs above are filled in.

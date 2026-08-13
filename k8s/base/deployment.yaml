@@ -1,0 +1,113 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-api
+spec:
+  replicas: 2
+
+  # spec.selector is IMMUTABLE. Changing it means delete-and-recreate, and it
+  # is the most common way a kustomize label change turns into a failed apply.
+  # Keep it minimal and never route generated labels into it.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-api
+
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never drop below the desired count during a rollout: bring the new pod
+      # up and wait for it to pass readiness before removing an old one.
+      maxUnavailable: 0
+      maxSurge: 1
+
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo-api
+    spec:
+      serviceAccountName: demo-api
+      terminationGracePeriodSeconds: 30
+
+      # Spread across zones when capacity allows, but do not make the pod
+      # unschedulable if it does not -- ScheduleAnyway, not DoNotSchedule.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: demo-api
+
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+        - name: api
+          image: sre-demo-api:local # overlay replaces this with the ECR image
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            capabilities:
+              drop: ["ALL"]
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              # No CPU limit on purpose: a CPU limit throttles rather than
+              # kills, and throttling under burst looks like latency with no
+              # obvious cause. The request is what the scheduler honours.
+              memory: 256Mi
+
+          # Startup probe first: gives a slow start up to 60s (30 x 2s) without
+          # forcing liveness to carry a long initialDelay forever after.
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+
+          env:
+            - name: SERVICE_NAME
+              value: sre-demo-api
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+
+          volumeMounts:
+            # readOnlyRootFilesystem: true means anything needing scratch space
+            # must be mounted explicitly.
+            - name: tmp
+              mountPath: /tmp
+
+      volumes:
+        - name: tmp
+          emptyDir: {}
