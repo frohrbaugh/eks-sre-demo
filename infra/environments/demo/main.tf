@@ -99,6 +99,16 @@ module "eks" {
     # to schedule onto, so it can only land after the node group exists.
     coredns = {}
 
+    # EKS does NOT ship metrics-server by default.
+    #
+    # Without it the HorizontalPodAutoscaler is declared but inert:
+    #   TARGETS: cpu: <unknown>/70%
+    #   ScalingActive=False  FailedGetResourceMetric
+    # and `kubectl top` returns nothing. Argo CD correctly reports the
+    # application Degraded, because a control loop the chart declares cannot
+    # actually run. Also a Deployment, so it comes after compute.
+    metrics-server = {}
+
     # Required for EKS Pod Identity. Without this add-on the association
     # exists in AWS but no credentials are ever delivered to the pod.
     eks-pod-identity-agent = {}
