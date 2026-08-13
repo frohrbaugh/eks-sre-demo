@@ -48,3 +48,7 @@ output "make_variables" {
     "DEMO_BUCKET=${aws_s3_bucket.demo.id}",
   ])
 }
+
+output "lb_controller_role_arn" {
+  value = aws_iam_role.lb_controller.arn
+}

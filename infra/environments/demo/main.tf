@@ -383,3 +383,41 @@ resource "aws_iam_role_policy" "github_ecr_push" {
   role   = aws_iam_role.github_actions.id
   policy = data.aws_iam_policy_document.github_ecr_push.json
 }
+
+################################################################################
+# AWS Load Balancer Controller
+#
+# The controller runs IN the cluster and reconciles real AWS load balancers from
+# Ingress objects. It therefore needs its own AWS identity - a third one,
+# distinct from the CI role and the application pod role.
+#
+# Pod Identity again rather than IRSA: same reasoning as the app. The binding
+# lives in AWS on (cluster, namespace, service account), so the Helm chart's
+# ServiceAccount needs no role annotation.
+################################################################################
+
+resource "aws_iam_role" "lb_controller" {
+  name               = "${var.cluster_name}-lb-controller"
+  assume_role_policy = data.aws_iam_policy_document.pod_trust.json
+}
+
+resource "aws_iam_policy" "lb_controller" {
+  name = "${var.cluster_name}-lb-controller"
+  # Verbatim from kubernetes-sigs/aws-load-balancer-controller v3.5.0.
+  # 16 statements, 80 actions across ec2, elasticloadbalancing, acm, iam,
+  # shield, wafv2, cognito-idp. Vendored rather than hand-written: this policy
+  # is a moving target and AWS publishes the authoritative version.
+  policy = file("${path.module}/policies/aws-load-balancer-controller.json")
+}
+
+resource "aws_iam_role_policy_attachment" "lb_controller" {
+  role       = aws_iam_role.lb_controller.name
+  policy_arn = aws_iam_policy.lb_controller.arn
+}
+
+resource "aws_eks_pod_identity_association" "lb_controller" {
+  cluster_name    = module.eks.cluster_name
+  namespace       = "kube-system"
+  service_account = "aws-load-balancer-controller"
+  role_arn        = aws_iam_role.lb_controller.arn
+}
