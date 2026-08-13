@@ -130,6 +130,18 @@ jobs:
   # The `github.repository` check is the important one: anyone can fork a public
   # repository and open a pull request, and this job is the only thing in the
   # workflow that can obtain AWS credentials.
+  #
+  # The `vars.AWS_GITHUB_ROLE_ARN != ''` check makes this job SKIP rather than
+  # FAIL before the infrastructure exists. The AWS account is created and
+  # destroyed per working session (docs/plan.md s10), so "no cluster right now"
+  # is the normal state, not an error -- and a red X on every commit would train
+  # everyone to ignore CI. Set the variable after `terraform apply`:
+  #
+  #   gh variable set AWS_GITHUB_ROLE_ARN --body "$(terraform output -raw github_role_arn)"
+  #   gh variable set AWS_REGION          --body "<region>"
+  #   gh variable set ECR_REPOSITORY_NAME --body "sre-demo-api"
+  #
+  # The job activates itself the moment those exist.
   # ---------------------------------------------------------------------------
   publish:
     name: build and push to ECR
@@ -137,7 +149,8 @@ jobs:
     if: >-
       github.repository == 'frohrbaugh/eks-sre-demo' &&
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/main'
+      github.ref == 'refs/heads/main' &&
+      vars.AWS_GITHUB_ROLE_ARN != ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
