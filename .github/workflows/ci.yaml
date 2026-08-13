@@ -30,9 +30,9 @@ jobs:
     name: test and validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -54,6 +54,38 @@ jobs:
       - name: Unit tests
         working-directory: app
         run: pytest
+
+      - name: Build the image
+        # This runs on pull requests on purpose.
+        #
+        # The publish job below is skipped for PRs, so without this step a
+        # change to the Dockerfile or requirements.lock would report green
+        # having never been built. Dependabot's python base-image bump did
+        # exactly that. Building here costs ~30s and closes the gap.
+        run: docker build --build-arg GIT_SHA="${{ github.sha }}" -t sre-demo-api:ci app
+
+      - name: Smoke test the image
+        # Under the same constraints Kubernetes will impose: read-only root
+        # filesystem, writable /tmp only. Catches a CrashLoopBackOff here, for
+        # free, instead of on a cluster at ~$0.34/hr.
+        run: |
+          docker run -d --name ci-smoke \
+            --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+            -p 8080:8080 sre-demo-api:ci
+          for i in $(seq 1 15); do
+            curl -fsS http://localhost:8080/health/ready >/dev/null 2>&1 && break
+            sleep 1
+          done
+          set -e
+          curl -fsS http://localhost:8080/health/ready
+          curl -fsS http://localhost:8080/api/v1/work
+          # Must degrade, not crash, with no AWS configured.
+          curl -fsS http://localhost:8080/api/v1/config | grep -q '"disabled"'
+          # The SLO in docs/slo.md is unmeasurable without this bucket edge.
+          curl -fsS http://localhost:8080/metrics | grep -q 'le="0.3"'
+          # Runs as the UID the securityContext asserts.
+          test "$(docker exec ci-smoke id -u)" = "10001"
+          docker rm -f ci-smoke
 
       - name: Validate manifests (stage 1)
         run: |
@@ -84,11 +116,11 @@ jobs:
     name: secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -114,10 +146,10 @@ jobs:
     outputs:
       image_tag: ${{ github.sha }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Assume the ECR publisher role via OIDC
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           # No access keys exist. GitHub presents a signed token; STS returns
           # short-lived credentials, but only for this repo on this ref.
@@ -153,7 +185,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Point the demo environment at the new SHA
         env:
