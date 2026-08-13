@@ -77,9 +77,28 @@ module "eks" {
   authentication_mode                      = "API"
 
   addons = {
-    coredns    = {}
-    kube-proxy = {}
-    vpc-cni    = {}
+    # before_compute = true is LOAD-BEARING, not a style choice.
+    #
+    # Without it this deadlocks on a fresh cluster:
+    #   - the managed node group waits for its nodes to report Ready
+    #   - a node cannot report Ready without a CNI ("cni plugin not
+    #     initialized" appears in the node's Ready condition)
+    #   - the CNI add-on is created after the node group
+    # Each waits on the other until the node group times out.
+    #
+    # kube-proxy gets the same treatment: Service routing is broken without
+    # it, and there is no reason to schedule workloads before it exists.
+    vpc-cni = {
+      before_compute = true
+    }
+    kube-proxy = {
+      before_compute = true
+    }
+
+    # CoreDNS must NOT be before_compute: it is a Deployment that needs a node
+    # to schedule onto, so it can only land after the node group exists.
+    coredns = {}
+
     # Required for EKS Pod Identity. Without this add-on the association
     # exists in AWS but no credentials are ever delivered to the pod.
     eks-pod-identity-agent = {}

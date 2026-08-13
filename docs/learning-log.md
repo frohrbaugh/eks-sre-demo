@@ -11,6 +11,101 @@ Newest first.
 
 ---
 
+## 2026-08-13 — A real deadlock: nodes need the CNI, the CNI came after the nodes
+
+**What I expected:** `terraform apply` creates the cluster, then the node group,
+then the add-ons. Nodes show up Ready. Done in ~15 minutes.
+
+**What actually happened:** the node group sat at `CREATING` for over ten
+minutes. The EC2 instances were `running` and the Node objects had registered,
+but both were `NotReady`.
+
+I read the condition instead of guessing:
+
+```
+Ready=False  reason=KubeletNotReady
+message: container runtime network not ready: NetworkReady=false
+         reason:NetworkPluginNotReady message:Network plugin returns error:
+         cni plugin not initialized
+```
+
+Then checked what was actually installed:
+
+```bash
+$ kubectl -n kube-system get pods
+No resources found in kube-system namespace.
+
+$ aws eks list-addons --cluster-name sre-demo
+{ "addons": [] }
+```
+
+**The deadlock:**
+
+- The managed node group will not report `ACTIVE` until its nodes are `Ready`.
+- A node cannot be `Ready` without a CNI.
+- The CNI add-on was scheduled to be created *after* the node group.
+
+Each waited on the other. Left alone it would have burned the node group
+timeout and failed.
+
+**What I did:** created `vpc-cni` and `kube-proxy` by hand to break the cycle.
+Both nodes went `Ready` within about a minute.
+
+**What that cost me — the part worth remembering.** Terraform then reached its
+own add-on resources and failed:
+
+```
+Error: creating EKS Add-On (sre-demo:vpc-cni):
+  ResourceInUseException: Addon already exists.
+```
+
+I had fixed the cluster and broken the state file. Terraform now had no record
+of two resources that existed in AWS. My out-of-band fix solved the immediate
+problem and created a subtler one.
+
+I also briefly believed the apply had succeeded, because my wrapper script
+exited 0 — that was the exit code of the last command in the script, not of
+`terraform`. Worth being careful about: a green exit code is a claim about
+whatever ran last.
+
+**The real fix,** in `infra/environments/demo/main.tf`:
+
+```hcl
+addons = {
+  vpc-cni    = { before_compute = true }
+  kube-proxy = { before_compute = true }
+  coredns    = {}   # a Deployment - it NEEDS a node, so it must come after
+  eks-pod-identity-agent = {}
+}
+```
+
+`before_compute` orders those add-ons ahead of the node group. CoreDNS
+deliberately does not get it: it is a Deployment and needs somewhere to run.
+
+Then reconciled state with reality rather than leaving the drift:
+
+```bash
+terraform import 'module.eks.aws_eks_addon.before_compute["vpc-cni"]'    sre-demo:vpc-cni
+terraform import 'module.eks.aws_eks_addon.before_compute["kube-proxy"]' sre-demo:kube-proxy
+terraform apply    # in-place: config attrs, tags, CNI v1.22.4 -> v1.23.0
+```
+
+`terraform plan` now reports no changes.
+
+**What I learned:**
+
+1. `NotReady` is not "still booting" — it is a condition with a message that
+   names the cause. Reading it took ten seconds and pointed straight at the CNI.
+2. Dependency order between infrastructure and the things that make a node
+   usable is not automatic. Something has to declare it.
+3. Fixing a cluster by hand while Terraform is mid-apply trades one problem for
+   another. If I do it, importing afterwards is part of the job, not optional
+   cleanup. The alternative — let it fail, fix the code, re-apply — is slower
+   but leaves nothing to remember.
+
+
+---
+
 ## 2026-08-13 — Green CI that validated nothing
 
 **What happened:** minutes after the first push, Dependabot opened five PRs. One
