@@ -46,8 +46,8 @@ lint: ## FREE  Lint and format-check
 	cd $(APP_DIR) && ../$(VENV)/bin/ruff format --check .
 
 .PHONY: lock
-lock: ## FREE  Regenerate the hash-pinned lock file (inside python:3.12)
-	docker run --rm -v "$(PWD)/$(APP_DIR)":/w -w /w python:3.12-slim sh -c \
+lock: ## FREE  Regenerate the hash-pinned lock file (inside python:3.14)
+	docker run --rm -v "$(PWD)/$(APP_DIR)":/w -w /w python:3.14-slim sh -c \
 	  'pip install -q pip-tools && pip-compile --quiet --generate-hashes \
 	   --strip-extras --output-file requirements.lock requirements.in'
 

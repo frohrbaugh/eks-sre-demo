@@ -10,6 +10,7 @@ tools:
   terraform: "1.15.8" # >= 1.10 required for S3-native state locking
   aws-cli: "2.35.21"
   docker: "29.7.2"
+  python: "3.14"        # container base, CI, and local venv all match
 
 kubernetes:
   # Must be a currently supported EKS version in the target region. Verify with:
