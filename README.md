@@ -29,8 +29,12 @@ records what surprised me and what I still don't know.
 | Stage 1 manifests (`k8s/`) | Complete — renders and schema-validates |
 | Stage 2 Helm chart (`charts/`) | Complete — lints and renders; equivalence to stage 1 verified |
 | Terraform (`infra/`) | Authored and `terraform validate` clean — **not yet applied** |
-| CI workflow | Authored — not yet run |
+| CI workflow | Running and green — builds and smoke-tests the image on every PR |
 | Argo CD, observability, evidence | Not started |
+
+The `publish` and `promote` jobs skip rather than fail until the AWS
+infrastructure exists, because no cluster is running most of the time and a red
+X on every commit would train everyone to ignore CI.
 
 The cluster is not currently running, and by design it usually won't be — see
 [Cost](#cost-and-why-there-is-no-local-cluster) below.
