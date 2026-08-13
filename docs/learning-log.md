@@ -11,6 +11,47 @@ Newest first.
 
 ---
 
+## 2026-08-13 — Green CI that validated nothing
+
+**What happened:** minutes after the first push, Dependabot opened five PRs. One
+bumped the container base image from `python:3.12-slim` to `3.14-slim`. CI went
+green.
+
+**What I expected:** that green meant the image had been built and tested on
+3.14.
+
+**What was actually true:** it meant nothing of the sort. My `test` job installs
+dependencies on a GitHub runner and runs pytest. The only step that builds the
+image was `publish` — which is deliberately skipped on pull requests, because it
+holds the AWS credentials. So a change to the Dockerfile or `requirements.lock`
+could report green having never been built once.
+
+**What I assumed, and got wrong:** I predicted the bump would fail, because
+`requirements.lock` was resolved on 3.12 and the Dockerfile installs with
+`--require-hashes`. I tested it rather than asserting it:
+
+```bash
+docker run --rm -v "$PWD":/w -w /w python:3.14-slim \
+  sh -c 'pip install --require-hashes -r requirements.lock'   # succeeded
+```
+
+Then built and ran the full image on 3.14 — all endpoints fine, read-only
+rootfs fine, zero restarts. The bump is safe. My reasoning about *why* it would
+break was wrong, but the reasoning that made me check was right.
+
+**What I changed:** the `test` job now builds the image and smoke-tests it on
+every pull request, under the same read-only-rootfs constraint Kubernetes will
+impose, asserting the degraded config path, the `le="0.3"` bucket, and UID
+10001. About 30 seconds, and it closes the gap.
+
+**What I learned, and this is the part I want to keep:** "CI is green" is a claim
+about what CI *ran*, not about what is *correct*. A passing pipeline that never
+exercises the changed artifact is worse than no pipeline, because it manufactures
+confidence. When I add a job, the question is not "does it pass" but "what would
+have to break for this to fail?"
+
+---
+
 ## 2026-08-13 — `--dry-run=client` is not an offline check
 
 **What I expected:** with no cluster yet, `kubectl apply -k k8s/overlays/eks
@@ -182,44 +223,3 @@ edges actually are.
   budgets. This demo runs one replica with days of retention.
 - **Real incident response under load.** The failure exercises here are
   self-inflicted on a cluster with synthetic traffic and no users.
-
----
-
-## 2026-08-13 — Green CI that validated nothing
-
-**What happened:** minutes after the first push, Dependabot opened five PRs. One
-bumped the container base image from `python:3.12-slim` to `3.14-slim`. CI went
-green.
-
-**What I expected:** that green meant the image had been built and tested on
-3.14.
-
-**What was actually true:** it meant nothing of the sort. My `test` job installs
-dependencies on a GitHub runner and runs pytest. The only step that builds the
-image was `publish` — which is deliberately skipped on pull requests, because it
-holds the AWS credentials. So a change to the Dockerfile or `requirements.lock`
-could report green having never been built once.
-
-**What I assumed, and got wrong:** I predicted the bump would fail, because
-`requirements.lock` was resolved on 3.12 and the Dockerfile installs with
-`--require-hashes`. I tested it rather than asserting it:
-
-```bash
-docker run --rm -v "$PWD":/w -w /w python:3.14-slim \
-  sh -c 'pip install --require-hashes -r requirements.lock'   # succeeded
-```
-
-Then built and ran the full image on 3.14 — all endpoints fine, read-only
-rootfs fine, zero restarts. The bump is safe. My reasoning about *why* it would
-break was wrong, but the reasoning that made me check was right.
-
-**What I changed:** the `test` job now builds the image and smoke-tests it on
-every pull request, under the same read-only-rootfs constraint Kubernetes will
-impose, asserting the degraded config path, the `le="0.3"` bucket, and UID
-10001. About 30 seconds, and it closes the gap.
-
-**What I learned, and this is the part I want to keep:** "CI is green" is a claim
-about what CI *ran*, not about what is *correct*. A passing pipeline that never
-exercises the changed artifact is worse than no pipeline, because it manufactures
-confidence. When I add a job, the question is not "does it pass" but "what would
-have to break for this to fail?"
