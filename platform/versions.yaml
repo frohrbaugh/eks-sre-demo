@@ -15,7 +15,7 @@ tools:
 kubernetes:
   # Must be a currently supported EKS version in the target region. Verify with:
   #   aws eks describe-cluster-versions --region <region>
-  eks_version: "1.34"
+  eks_version: "1.35"   # what was actually run
 
 terraform_modules:
   vpc: "~> 6.0" # terraform-aws-modules/vpc/aws

@@ -28,10 +28,10 @@ records what surprised me and what I still don't know.
 | Container image | Complete — non-root, hash-pinned deps, read-only rootfs verified |
 | Stage 1 manifests (`k8s/`) | Complete — renders and schema-validates |
 | Stage 2 Helm chart (`charts/`) | Complete — lints and renders; equivalence to stage 1 verified |
-| Terraform (`infra/`) | Authored and `terraform validate` clean — **not yet applied** |
+| Terraform (`infra/`) | Applied and destroyed cleanly — 76 resources, zero orphans |
 | CI workflow | Running and green — builds and smoke-tests the image on every PR |
 | Argo CD | Ran on the live cluster: Synced/Healthy, drift behaviour documented |
-| Evidence | 7 sanitized captures in [docs/evidence/](docs/evidence/) |
+| Evidence | 6 sanitized captures in [docs/evidence/](docs/evidence/) |
 | Observability stack | Not installed - ServiceMonitor/PrometheusRule remain disabled |
 
 The `publish` and `promote` jobs skip rather than fail until the AWS
@@ -173,7 +173,7 @@ orphan a load balancer that keeps billing.
 
 Nothing installs `latest`. Pinned set in
 [`platform/versions.yaml`](platform/versions.yaml): kubectl 1.35.7, Helm 4.2.3,
-Terraform 1.15.8, EKS 1.34, VPC module ~> 6.0, EKS module ~> 21.0.
+Terraform 1.15.8, EKS 1.35, VPC module ~> 6.0, EKS module ~> 21.0.
 
 ## License
 
