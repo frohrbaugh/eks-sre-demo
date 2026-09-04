@@ -30,14 +30,21 @@ records what surprised me and what I still don't know.
 | Stage 2 Helm chart (`charts/`) | Complete — lints and renders; equivalence to stage 1 verified |
 | Terraform (`infra/`) | Authored and `terraform validate` clean — **not yet applied** |
 | CI workflow | Running and green — builds and smoke-tests the image on every PR |
-| Argo CD, observability, evidence | Not started |
+| Argo CD | Ran on the live cluster: Synced/Healthy, drift behaviour documented |
+| Evidence | 7 sanitized captures in [docs/evidence/](docs/evidence/) |
+| Observability stack | Not installed - ServiceMonitor/PrometheusRule remain disabled |
 
 The `publish` and `promote` jobs skip rather than fail until the AWS
 infrastructure exists, because no cluster is running most of the time and a red
 X on every commit would train everyone to ignore CI.
 
-The cluster is not currently running, and by design it usually won't be — see
-[Cost](#cost-and-why-there-is-no-local-cluster) below.
+The cluster is **destroyed**. It ran 2026-08-13 to 2026-09-04 and cost **$199.94** -
+substantially more than intended, because I left it up. That overrun is written
+up honestly in [the learning log](docs/learning-log.md), and it is the most
+useful thing in this repository: every guardrail I built *notified* rather than
+*enforced*.
+
+Everything the cluster demonstrated is captured in [docs/evidence/](docs/evidence/).
 
 ---
 
