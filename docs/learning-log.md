@@ -11,6 +11,82 @@ Newest first.
 
 ---
 
+## 2026-09-04 — I left the cluster up for 22 days. It cost $199.94.
+
+The most expensive lesson in this project, and the one I would most want to be
+asked about.
+
+**The plan:** create the cluster for a working session, tear it down at the end.
+`docs/plan.md` section 10 says exactly that, in detail, with a cost table. I
+wrote it.
+
+**What happened:** I finished a session on 2026-08-13 intending to pick it up
+"tomorrow", scaled the node group to zero to halve the burn, and then did not
+come back for three weeks.
+
+```
+uptime: 539 hours (22.5 days)
+```
+
+| Service | Cost |
+|---|---:|
+| EC2 compute | $86.63 |
+| EKS control plane | $52.35 |
+| EC2 - Other (NAT gateway, EBS) | $28.05 |
+| Elastic Load Balancing | $9.86 |
+| CloudWatch | $7.82 |
+| VPC | $6.64 |
+| **Total** | **$199.94** |
+
+Against a $30 budget.
+
+**The guardrails all worked. None of them helped.**
+
+- The AWS Budget fired at 25%, 50%, 80% and forecast-100%. Four emails.
+- Every resource carried `DeleteAfter = 2026-08-15`.
+- The Makefile had a `destroy` target with the correct ordering.
+
+Every one of those is a *notification* or a *label*. Not one of them can stop an
+EC2 instance. I built a smoke detector and no sprinkler.
+
+**The scale-to-zero didn't hold either.** I set `node_min_size = 0` and applied
+it, but the nodes were running again when I returned - and EC2 compute is still
+the single largest line item at $86.63. I did not verify the instances actually
+terminated before walking away; I checked once, saw `2`, assumed it was
+in-progress, and stopped looking. **Verifying that a cost-control action took
+effect is part of the action.**
+
+**My cost model was also wrong,** though this is the small part: I estimated
+$0.345/hr, actual was $0.371/hr. The gap is CloudWatch (control-plane logs -
+I enabled all five types) and VPC charges, neither of which I modelled. About
+7% low, which is fine for planning and would be embarrassing in a bill forecast.
+
+**What would actually have prevented this:**
+
+1. **A scheduled shutdown that executes.** EventBridge on a cron calling
+   `UpdateNodegroupConfig` to zero, or a Lambda that destroys the stack on the
+   `DeleteAfter` date. Something with an IAM role, not an inbox.
+2. **A budget ACTION, not just an alert.** AWS Budgets can apply a policy or
+   stop instances at a threshold. I used the notification half only.
+3. **Treating "did the cost control take effect?" as a check with an assertion**,
+   the same way I would treat a deploy.
+
+**The honest framing:** I knew the right answer, wrote it down, built the tooling
+for it, and still spent $200 - because every control I built asked a human to
+act, and the human went away for three weeks. That is not a knowledge gap. It is
+the difference between a control and a reminder, and it is why production systems
+have the former.
+
+**Teardown itself was clean,** which is the one part that went right: Argo CD
+Application first (selfHeal would have recreated a deleted Ingress), then the
+Ingress so the ALB controller could remove the load balancer, then
+`terraform destroy` - 76 resources. Orphan sweep afterwards found zero
+load balancers, NAT gateways, Elastic IPs, volumes, log groups, or buckets.
+The ordering in the runbook worked exactly as written.
+
+
+---
+
 ## 2026-08-13 — Helm 4 applies server-side, and that changes the migration
 
 **The open question I had:** whether Helm 4 would behave differently from the
